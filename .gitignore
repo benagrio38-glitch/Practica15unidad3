@@ -1,0 +1,11 @@
+# Manual del profesor (no se sube)
+/docs/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Secretos: la cuenta de servicio de Firebase NUNCA va al repo
+.env
+*service-account*.json
+*-firebase-adminsdk-*.json
