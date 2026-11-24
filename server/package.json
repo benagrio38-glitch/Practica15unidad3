@@ -5,6 +5,7 @@
   "main": "servidor.js",
   "scripts": {
     "start": "node servidor.js",
+    "dev": "node servidor.js --dev",
     "test": "node --test"
   },
   "engines": { "node": ">=20" },

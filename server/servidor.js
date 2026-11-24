@@ -36,7 +36,24 @@ function leerJson(req) {
   });
 }
 
-function crearManejador({ salas = new Salas(), enviador, ahora = () => Date.now(), log = () => {} } = {}) {
+/**
+ * CORS solo para desarrollo: con `permitirLocal` se aceptan páginas servidas desde
+ * localhost/127.0.0.1 en cualquier puerto (por ejemplo `flutter run -d edge`).
+ * Sin esa opción no se manda ninguna cabecera CORS, igual que antes.
+ */
+const ORIGEN_LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/;
+function cabecerasCors(req, permitirLocal) {
+  const origen = req.headers.origin;
+  if (!permitirLocal || !origen || !ORIGEN_LOCAL.test(origen)) return {};
+  return {
+    'access-control-allow-origin': origen,
+    'access-control-allow-methods': 'GET, POST, PUT, OPTIONS',
+    'access-control-allow-headers': 'content-type, x-cantor-clave, x-jugador-clave',
+    vary: 'Origin',
+  };
+}
+
+function crearManejador({ salas = new Salas(), enviador, ahora = () => Date.now(), log = () => {}, permitirLocal = false } = {}) {
   /** Envía sin romper la petición: el estado del juego es la verdad; el push es un aviso. */
   async function enviarSeguro(mensaje, { sala, jugador } = {}) {
     try {
@@ -103,15 +120,22 @@ function crearManejador({ salas = new Salas(), enviador, ahora = () => Date.now(
   }
 
   return async (req, res) => {
+    const cors = cabecerasCors(req, permitirLocal);
+    // Pregunta previa (preflight) del navegador: solo se contesta si el origen está permitido.
+    if (req.method === 'OPTIONS' && cors['access-control-allow-origin']) {
+      res.writeHead(204, cors);
+      res.end();
+      return;
+    }
     try {
       const [estado, cuerpo] = await atender(req, res);
-      res.writeHead(estado, { 'content-type': 'application/json; charset=utf-8' });
+      res.writeHead(estado, { 'content-type': 'application/json; charset=utf-8', ...cors });
       res.end(JSON.stringify(cuerpo));
     } catch (err) {
       const conocido = err instanceof ErrorJuego;
       if (!conocido) log(`error interno: ${err && err.stack}`);
       // Al cliente solo le damos mensajes seguros; los detalles internos se quedan en el log.
-      const cabeceras = { 'content-type': 'application/json; charset=utf-8' };
+      const cabeceras = { 'content-type': 'application/json; charset=utf-8', ...cors };
       if (conocido && err.estado === 413) cabeceras.connection = 'close';
       res.writeHead(conocido ? err.estado : 500, cabeceras);
       res.end(JSON.stringify({ error: conocido ? err.codigo : 'ERROR_INTERNO', mensaje: conocido ? err.message : 'Error interno' }));
@@ -128,8 +152,10 @@ if (require.main === module) {
   const real = process.env.FCM_REAL === '1';
   const enviador = real ? crearEnviadorFcm({ dryRun: process.env.FCM_DRY_RUN === '1' }) : crearEnviadorConsola(log);
   const puerto = Number(process.env.PORT ?? 8080);
-  crearServidor({ enviador, log }).listen(puerto, () => {
-    log(`Cantor listo en http://localhost:${puerto} (${real ? 'FCM real' : 'push simulado en consola'}; intervalo mínimo ${INTERVALO_MIN_CANTO_MS} ms)`);
+  // `npm run dev` (node servidor.js --dev) acepta la app web de flutter run desde localhost.
+  const permitirLocal = process.argv.includes('--dev');
+  crearServidor({ enviador, log, permitirLocal }).listen(puerto, () => {
+    log(`Cantor listo en http://localhost:${puerto} (${real ? 'FCM real' : 'push simulado en consola'}; intervalo mínimo ${INTERVALO_MIN_CANTO_MS} ms${permitirLocal ? '; CORS para localhost' : ''})`);
   });
 }
 

@@ -184,7 +184,7 @@ Cada ronda corre el archivo de pruebas de un módulo, primero en **rojo** (falla
 
 ![App 4 verde](evidencia/tdd/r4_verde.png)
 
-Al final, `node --test` pasa las 61 pruebas del servidor y `flutter test` pasa las 52 de la app (capturas en la sección de evidencia).
+Al final, `node --test` pasa las 63 pruebas del servidor y `flutter test` pasa las 52 de la app (capturas en la sección de evidencia).
 
 ## Carpetas
 
@@ -235,28 +235,32 @@ app/
 
 ## Cómo correrlo
 
-El servidor:
+Se usan dos terminales. En la primera va el servidor (el cantor) en modo desarrollo:
 
 ```
 cd server
 npm test
-npm start
+npm run dev
 ```
 
-La app sin Firebase (demo en el navegador):
+`npm run dev` es igual que `npm start`, pero deja que la app web de `flutter run` (que sale en otro puerto de `localhost`) le hable al cantor (CORS solo para `localhost`). En `npm start` no se manda ninguna cabecera CORS.
+
+En la segunda va la app sin Firebase (demo en el navegador):
 
 ```
 cd app
 flutter pub get
 flutter test
-flutter run -d chrome -t lib/main_demo.dart
+flutter run -d edge -t lib/main_demo.dart
 ```
+
+La demo busca al cantor en `http://localhost:8080`; si está en otra dirección se cambia con `--dart-define=CANTOR=http://...`. Para jugar se abren dos pestañas: en una se crea la sala como cantor y en la otra se une el jugador con el código.
 
 Para el push de verdad hace falta un proyecto de Firebase propio: en `app/` se corre `flutterfire configure` (genera `lib/firebase_options.dart`, que no viene en el repo) y el servidor se arranca con `FCM_REAL=1` y `GOOGLE_APPLICATION_CREDENTIALS` apuntando al JSON de la cuenta de servicio. Ese JSON es secreto y nunca se sube al repositorio (está en el `.gitignore`).
 
 ## Evidencia
 
-Resultado de `npm test` en el servidor (61 pruebas: 6 de la baraja, 16 de las líneas, 9 de los mensajes, 18 de la sala y 12 del servidor HTTP):
+Resultado de `npm test` en el servidor (63 pruebas: 6 de la baraja, 16 de las líneas, 9 de los mensajes, 18 de la sala y 14 del servidor HTTP, 2 de ellas del modo `dev` con CORS para `localhost`):
 
 ![node --test](evidencia/node_test.png)
 

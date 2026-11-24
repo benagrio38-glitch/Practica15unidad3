@@ -11,15 +11,21 @@ import 'presentacion/vms.dart';
 
 /// Arranque de demostración SIN Firebase, para probar la app en el navegador.
 ///
-/// Usa el servidor real (mismo origen que la página) y un puerto de push que se
-/// comporta como "permiso denegado". Es la degradación elegante del manual: sin
-/// push, la app sigue jugando y le pregunta al cantor cada 5 s.
+/// Usa el servidor real y un puerto de push que se comporta como "permiso
+/// denegado". Es la degradación elegante del manual: sin push, la app sigue
+/// jugando y le pregunta al cantor cada 5 s.
 ///
-///   flutter run -d chrome -t lib/main_demo.dart
+/// Con el cantor en modo dev (`npm run dev` en server/):
+///   flutter run -d edge -t lib/main_demo.dart
+/// La dirección del cantor se puede cambiar con
+///   --dart-define=CANTOR=http://localhost:8080
+const _cantor = String.fromEnvironment('CANTOR', defaultValue: 'http://localhost:8080');
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final almacen = AlmacenPrefs(await SharedPreferences.getInstance());
-  final api = ApiHttp(Uri.base.origin);
+  // CANTOR=mismo-origen sirve cuando la página y el cantor salen del mismo lugar (proxy).
+  final api = ApiHttp(_cantor == 'mismo-origen' ? Uri.base.origin : _cantor);
   final controlador = ControladorPartida(api: api, push: PuertoSinPush(), almacen: almacen);
   runApp(AppLoteria(vm: JuegoVm(controlador), crearCantor: () => CantorVm(api)));
 }

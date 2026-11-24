@@ -12,7 +12,7 @@ function fuenteDeterminista() {
 }
 
 /** Arranca un servidor real en un puerto libre, con un enviador falso que registra todo. */
-async function levantar({ falla = () => null } = {}) {
+async function levantar({ falla = () => null, permitirLocal = false } = {}) {
   const enviados = [];
   const logs = [];
   let reloj = 1_000_000;
@@ -25,9 +25,10 @@ async function levantar({ falla = () => null } = {}) {
     },
   };
   const salas = new Salas({ fuente: fuenteDeterminista() });
-  const srv = crearServidor({ salas, enviador, ahora: () => reloj, log: (l) => logs.push(l) });
+  const srv = crearServidor({ salas, enviador, ahora: () => reloj, log: (l) => logs.push(l), permitirLocal });
   await new Promise((r) => srv.listen(0, r));
   const base = `http://127.0.0.1:${srv.address().port}`;
+  const crudo = (metodo, ruta, cabeceras = {}) => fetch(base + ruta, { method: metodo, headers: cabeceras });
   const http = async (metodo, ruta, cuerpo, cabeceras = {}) => {
     const res = await fetch(base + ruta, {
       method: metodo,
@@ -37,7 +38,7 @@ async function levantar({ falla = () => null } = {}) {
     return { estado: res.status, json: await res.json() };
   };
   return {
-    http, enviados, logs, salas,
+    http, crudo, enviados, logs, salas,
     avanzar: (ms) => { reloj += ms; },
     cerrar: () => new Promise((r) => srv.close(r)),
   };
@@ -226,4 +227,37 @@ test('errores internos no filtran detalles al cliente', async () => {
     assert.equal(JSON.stringify(r.json).includes('contraseña'), false);
     assert.ok(ctx.logs.some((l) => l.includes('contraseña')), 'pero sí queda en el log del servidor');
   } finally { await ctx.cerrar(); }
+});
+
+test('CORS apagado por defecto: no manda cabeceras ni contesta el preflight', async () => {
+  const ctx = await levantar();
+  try {
+    const r = await ctx.crudo('POST', '/salas', { origin: 'http://localhost:5173' });
+    assert.equal(r.status, 201);
+    assert.equal(r.headers.get('access-control-allow-origin'), null);
+    const pre = await ctx.crudo('OPTIONS', '/salas', { origin: 'http://localhost:5173' });
+    assert.notEqual(pre.status, 204);
+  } finally {
+    await ctx.cerrar();
+  }
+});
+
+test('modo dev: acepta localhost en cualquier puerto y rechaza otros orígenes', async () => {
+  const ctx = await levantar({ permitirLocal: true });
+  try {
+    const pre = await ctx.crudo('OPTIONS', '/salas/ABC12/cantar', {
+      origin: 'http://localhost:5173',
+      'access-control-request-method': 'POST',
+      'access-control-request-headers': 'x-cantor-clave',
+    });
+    assert.equal(pre.status, 204);
+    assert.equal(pre.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+    assert.match(pre.headers.get('access-control-allow-headers'), /x-cantor-clave/);
+    const ok = await ctx.crudo('POST', '/salas', { origin: 'http://127.0.0.1:61234' });
+    assert.equal(ok.headers.get('access-control-allow-origin'), 'http://127.0.0.1:61234');
+    const ajeno = await ctx.crudo('POST', '/salas', { origin: 'https://sitio-malo.com' });
+    assert.equal(ajeno.headers.get('access-control-allow-origin'), null);
+  } finally {
+    await ctx.cerrar();
+  }
 });
